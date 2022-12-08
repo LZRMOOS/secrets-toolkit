@@ -22,6 +22,7 @@ Dir.glob("#{GITLEAKS_RESULTS_PATH}/*_gitleaks.csv").each do |file|
   repo_name = file.split('/').last.split('_').first
   puts "repo_name: #{repo_name}"
 
+  begin
   # read csv file and write to summary file without header
   CSV.foreach(file, headers: true) do |row|
     # TODO: add repo_url to row as well
@@ -29,5 +30,8 @@ Dir.glob("#{GITLEAKS_RESULTS_PATH}/*_gitleaks.csv").each do |file|
     CSV.open(GITLEAKS_SUMMARY_FILE, 'a+') do |csv|
       csv << row
     end
+  end
+  rescue CSV::MalformedCSVError => e
+    puts "Error for #{repo_name}: #{e}"
   end
 end
