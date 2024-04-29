@@ -1,7 +1,7 @@
 require 'csv'
 require 'json'
 
-ORG_NAME = 'DocSend'
+ORG_NAME = '<ORG>'
 ACCESS_TOKEN = ENV['GH_PAT']
 CSV_FILENAME = "wei-ghas-secrets-results-#{ORG_NAME}.csv"
 
