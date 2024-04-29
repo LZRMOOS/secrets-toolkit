@@ -1,52 +1,52 @@
 require 'csv'
 require 'json'
 
-ORG_NAME = '<ORG>'
+ORG_NAME = 'DocSend'
 ACCESS_TOKEN = ENV['GH_PAT']
 CSV_FILENAME = "wei-ghas-secrets-results-#{ORG_NAME}.csv"
 
 alerts_data = []
 page = 1
 
-loop do
-  curl_command = "curl -L \
+def curl_cmd(url)
+  "curl -L \
   -H 'Accept: application/vnd.github+json' \
   -H 'Authorization: Bearer #{ACCESS_TOKEN}' \
   -H 'X-GitHub-Api-Version: 2022-11-28' \
-  https://api.github.com/orgs/#{ORG_NAME}/secret-scanning/alerts?page=#{page}"
+  #{url}"
+end
 
-  # Execute curl command and capture output
-  curl_output = `#{curl_command}`
-  # Parse JSON response
-  response = JSON.parse(curl_output)
+loop do
+  secret_alerts = `#{curl_cmd("https://api.github.com/orgs/#{ORG_NAME}/secret-scanning/alerts?page=#{page}")}`
+  secret_alerts_json = JSON.parse(secret_alerts)
 
-  break if response.empty?
+  break if secret_alerts_json.empty?
 
-  # Process JSON response
-  response.each do |alert|
+  secret_alerts_json.each do |alert|
     locations_url = alert['locations_url']
     break if locations_url.empty?
-    locations_curl_cmd = "curl -L \
-    -H 'Accept: application/vnd.github+json' \
-    -H 'Authorization: Bearer #{ACCESS_TOKEN}' \
-    -H 'X-GitHub-Api-Version: 2022-11-28' \
-    #{locations_url}"
-    loc_curl_output = `#{locations_curl_cmd}`
-    loc_response = JSON.parse(loc_curl_output)
-    l_response = loc_response.first['details']
+    
+    locations = `#{curl_cmd("#{locations_url}")}`
+    locations_json = JSON.parse(locations)
 
-    ghurl_url = "https://github.com/#{ORG_NAME}/#{alert['repository']['name']}/blob/#{l_response['commit_sha']}/#{l_response['path']}#L#{l_response['start_line']}"
+    location_details = locations_json.first['details']
+    gh_url = "https://github.com/" +
+          "#{ORG_NAME}/" +
+          "#{alert['repository']['name']}/blob/" +
+          "#{location_details['commit_sha']}/" +
+          "#{location_details['path']}#L" +
+          "#{location_details['start_line']}"
 
     alert_data = {
       ruleid: alert['secret_type_display_name'],
-      file: l_response['path'],
+      file: location_details['path'],
       repository: alert['repository']['full_name'],
       secret: alert['secret'],
-      commit: l_response['commit_sha'],
-      startline: l_response['start_line'],
-      endline:  l_response['end_line'],
+      commit: location_details['commit_sha'],
+      startline: location_details['start_line'],
+      endline:  location_details['end_line'],
       url: alert['html_url'],
-      gh_url: ghurl_url
+      gh_url: gh_url
     }
 
     alerts_data << alert_data
@@ -54,13 +54,12 @@ loop do
   page += 1
 end
 
-puts alerts_data.count
+puts "Found #{alerts_data.count} secret scanning alerts"
 
 csv_file = "#{CSV_FILENAME}"
 
 CSV.open(csv_file, 'w') do |csv|
   csv << ['RuleID', 'File', 'Org/Repo', 'Secret', 'Commit SHA', 'Start Line', 'End Line', 'Alert URL', 'GitHub URL']
-
   alerts_data.each do |alert_data|
     csv << alert_data.values
   end
