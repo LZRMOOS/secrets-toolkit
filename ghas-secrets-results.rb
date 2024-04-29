@@ -1,10 +1,8 @@
-# script to use GitHub's octokit api to get the security secret scanning results for all repos in an organization
 require 'csv'
-require 'octokit'
 require 'json'
 
 ORG_NAME = '<ORG>'
-ACCESS_TOKEN = '<PAT>'
+ACCESS_TOKEN = ENV['GH_PAT']
 CSV_FILENAME = "wei-ghas-secrets-results-#{ORG_NAME}.csv"
 
 alerts_data = []
@@ -19,7 +17,6 @@ loop do
 
   # Execute curl command and capture output
   curl_output = `#{curl_command}`
-
   # Parse JSON response
   response = JSON.parse(curl_output)
 
@@ -27,45 +24,42 @@ loop do
 
   # Process JSON response
   response.each do |alert|
+    locations_url = alert['locations_url']
+    break if locations_url.empty?
+    locations_curl_cmd = "curl -L \
+    -H 'Accept: application/vnd.github+json' \
+    -H 'Authorization: Bearer #{ACCESS_TOKEN}' \
+    -H 'X-GitHub-Api-Version: 2022-11-28' \
+    #{locations_url}"
+    loc_curl_output = `#{locations_curl_cmd}`
+    loc_response = JSON.parse(loc_curl_output)
+    l_response = loc_response.first['details']
+
+    ghurl_url = "https://github.com/#{ORG_NAME}/#{alert['repository']['name']}/blob/#{l_response['commit_sha']}/#{l_response['path']}#L#{l_response['start_line']}"
+
     alert_data = {
-      researcher: '',
       ruleid: alert['secret_type_display_name'],
-      analysis: '',
-      priority: '',
-      in_code: '',
-      file: alert['locations_url'],
+      file: l_response['path'],
       repository: alert['repository']['full_name'],
-      initial_migration: '',
-      revoked: '',
-      action: '',
       secret: alert['secret'],
-      match: '',
-      commit: '',
-      startline: '',
-      endline: '',
-      startcol: '',
-      endcol: '',
-      author: '',
-      date: '',
-      email: '',
-      fingerprint: '',
+      commit: l_response['commit_sha'],
+      startline: l_response['start_line'],
+      endline:  l_response['end_line'],
       url: alert['html_url'],
-      notes: ''
+      gh_url: ghurl_url
     }
 
     alerts_data << alert_data
-    puts alerts_data.count
   end
   page += 1
 end
 
-# Export data to CSV file
-require 'csv'
+puts alerts_data.count
 
 csv_file = "#{CSV_FILENAME}"
 
 CSV.open(csv_file, 'w') do |csv|
-  # csv << ['Researcher', 'RuleID', 'Analysis', 'Priority', 'State', 'Created At', 'URL']
+  csv << ['RuleID', 'File', 'Org/Repo', 'Secret', 'Commit SHA', 'Start Line', 'End Line', 'Alert URL', 'GitHub URL']
 
   alerts_data.each do |alert_data|
     csv << alert_data.values
