@@ -2,6 +2,7 @@ require 'csv'
 require 'json'
 
 ACCESS_TOKEN = ENV['GH_PAT']
+CSV_FILE_PREFIX = "weid"
 
 def get_alerts_for_organization(org_name)
   alerts_data = []
@@ -68,7 +69,7 @@ def process_organizations_from_file(file_path)
 end
 
 def export_to_csv(alerts_data, org_name)
-  csv_file = "wei-ghas-secrets-results-#{org_name}.csv"
+  csv_file = "#{CSV_FILE_PREFIX}-ghasss-results-for-#{org_name}.csv"
 
   CSV.open(csv_file, 'w') do |csv|
     csv << ['RuleID', 'File', 'Org/Repo', 'Secret', 'Validity', 'State', 'Resolution', 'Commit SHA', 'Start Line', 'End Line', 'Alert URL', 'GitHub URL']
