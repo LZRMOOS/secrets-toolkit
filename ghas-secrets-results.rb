@@ -1,7 +1,7 @@
 require 'csv'
 require 'json'
 
-ORG_NAME = '<ORG>'
+ORG_NAME = 'DocSend'
 ACCESS_TOKEN = ENV['GH_PAT']
 CSV_FILENAME = "wei-ghas-secrets-results-#{ORG_NAME}.csv"
 
@@ -42,6 +42,9 @@ loop do
       file: location_details['path'],
       repository: alert['repository']['full_name'],
       secret: alert['secret'],
+      validity: alert['validity'],
+      state: alert['state'],
+      resolution: alert['resolution'],
       commit: location_details['commit_sha'],
       startline: location_details['start_line'],
       endline:  location_details['end_line'],
@@ -59,7 +62,7 @@ puts "Found #{alerts_data.count} secret scanning alerts"
 csv_file = "#{CSV_FILENAME}"
 
 CSV.open(csv_file, 'w') do |csv|
-  csv << ['RuleID', 'File', 'Org/Repo', 'Secret', 'Commit SHA', 'Start Line', 'End Line', 'Alert URL', 'GitHub URL']
+  csv << ['RuleID', 'File', 'Org/Repo', 'Secret', 'Validity', 'State', 'Resolution', 'Commit SHA', 'Start Line', 'End Line', 'Alert URL', 'GitHub URL']
   alerts_data.each do |alert_data|
     csv << alert_data.values
   end
