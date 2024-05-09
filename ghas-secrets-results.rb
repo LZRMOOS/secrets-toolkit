@@ -25,36 +25,57 @@ def get_alerts_for_organization(org_name)
     break if secret_alerts_json.empty?
 
     secret_alerts_json.each do |alert|
+
       locations_url = alert['locations_url']
       break if locations_url.empty?
 
       locations = `#{curl_cmd("#{locations_url}")}`
       locations_json = JSON.parse(locations)
 
-      location_details = locations_json.first['details']
-      gh_url = "https://github.com/" +
+      locations_json.each do |location|
+        location_details = location['details']
+        note = ''
+        gh_url = "https://github.com/" +
             "#{org_name}/" +
             "#{alert['repository']['name']}/blob/" +
             "#{location_details['commit_sha']}/" +
             "#{location_details['path']}#L" +
             "#{location_details['start_line']}"
 
-      alert_data = {
-        ruleid: alert['secret_type_display_name'],
-        file: location_details['path'],
-        repository: alert['repository']['full_name'],
-        secret: alert['secret'],
-        validity: alert['validity'],
-        state: alert['state'],
-        resolution: alert['resolution'],
-        commit: location_details['commit_sha'],
-        startline: location_details['start_line'],
-        endline:  location_details['end_line'],
-        url: alert['html_url'],
-        gh_url: gh_url
-      }
-
-      alerts_data << alert_data
+        if location_details['commit_sha'].nil?
+          note = "You'll need to refer to the Alert URL: #{alert['html_url']}. The GitHub API is broken, #{locations_url} is giving incomplete data" 
+        else 
+          commit_url = location_details['commit_url']
+          commit = `#{curl_cmd("#{commit_url}")}`
+          commit_info = JSON.parse(commit)
+          committer_name = commit_info['committer']['name']
+          committer_email = commit_info['committer']['email']
+          committer_date = commit_info['committer']['date']
+        end
+       
+        alert_data = {
+          number: alert['number'],
+          ruleid: alert['secret_type_display_name'],
+          file: location_details['path'],
+          repository: alert['repository']['full_name'],
+          secret: alert['secret'],
+          validity: alert['validity'],
+          state: alert['state'],
+          resolution: alert['resolution'],
+          commit: location_details['commit_sha'],
+          startline: location_details['start_line'],
+          endline:  location_details['end_line'],
+          url: alert['html_url'],
+          gh_url: gh_url,
+          resolution_comment: alert['resolution_comment'],
+          committer_name: committer_name,
+          committer_email: committer_email,
+          committer_date: committer_date,
+          note: note
+        }
+  
+        alerts_data << alert_data
+      end
     end
     page += 1
   end
@@ -74,7 +95,7 @@ def export_to_csv(alerts_data, org_name)
   csv_file = "#{org_name}-#{DATE}-ghasss-results-by-#{USERNAME}.csv"
 
   CSV.open(csv_file, 'w') do |csv|
-    csv << ['RuleID', 'File', 'Org/Repo', 'Secret', 'Validity', 'State', 'Resolution', 'Commit SHA', 'Start Line', 'End Line', 'Alert URL', 'GitHub URL']
+    csv << ['Alert Number', 'RuleID', 'File', 'Org/Repo', 'Secret', 'Validity', 'State', 'Resolution', 'Commit SHA', 'Start Line', 'End Line', 'Alert URL', 'GitHub URL', 'Resolution Comment', 'Committer Name', 'Committer Email', 'Committer Date', 'Note']
     alerts_data.each do |alert_data|
       csv << alert_data.values
     end
