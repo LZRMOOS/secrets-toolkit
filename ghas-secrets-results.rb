@@ -63,11 +63,14 @@ def get_alerts_for_organization(org_name)
 
         puts 'Working on: ' + alert['html_url']
 
+        repo_name = alert['repository']['full_name'].split('/').last
+
         alert_data = {
           number: alert['number'],
           ruleid: alert['secret_type_display_name'],
           file: file_path,
-          repository: alert['repository']['full_name'],
+          org: org_name,
+          repository: repo_name,
           secret: alert['secret'],
           validity: alert['validity'],
           state: alert['state'],
@@ -105,7 +108,7 @@ def export_to_csv(alerts_data, org_name)
   csv_file = "#{org_name}-#{DATE}-ghasss-results-by-#{USERNAME}.csv"
 
   CSV.open(csv_file, 'w') do |csv|
-    csv << ['Alert Number', 'RuleID', 'File', 'Org/Repo', 'Secret', 'Validity', 'State', 'Resolution', 'Commit SHA', 'Start Line', 'End Line', 'Alert URL', 'GitHub URL', 'Resolution Comment', 'Committer Name', 'Committer Email', 'Committer Date', 'Note']
+    csv << ['Alert Number', 'RuleID', 'File', 'Org', 'Repo', 'Secret', 'Validity', 'State', 'Resolution', 'Commit SHA', 'Start Line', 'End Line', 'Alert URL', 'GitHub URL', 'Resolution Comment', 'Committer Name', 'Committer Email', 'Committer Date', 'Note']
     alerts_data.each do |alert_data|
       csv << alert_data.values
     end
