@@ -1,62 +1,72 @@
 require 'csv'
 require 'date'
 require 'json'
+require 'open-uri'
 
 ACCESS_TOKEN = ENV['GH_PAT']
 USERNAME = "@weid"
 DATE = Date.today.to_s
 
+def fetch_data(url)
+  URI.open(url, 'Accept' => 'application/vnd.github+json',
+                'Authorization' => "Bearer #{ACCESS_TOKEN}",
+                'X-GitHub-Api-Version' => '2022-11-28').read
+end
+
 def get_alerts_for_organization(org_name)
+  puts "Organization: #{org_name} - #{Time.now}\n------------------------------------------------------------------\n"
   alerts_data = []
   page = 1
 
-  def curl_cmd(url)
-    "curl -L \
-    -H 'Accept: application/vnd.github+json' \
-    -H 'Authorization: Bearer #{ACCESS_TOKEN}' \
-    -H 'X-GitHub-Api-Version: 2022-11-28' \
-    #{url}"
-  end
-
   loop do
-    secret_alerts = `#{curl_cmd("https://api.github.com/orgs/#{org_name}/secret-scanning/alerts?page=#{page}")}`
+    secret_alerts = fetch_data("https://api.github.com/orgs/#{org_name}/secret-scanning/alerts?page=#{page}")
     secret_alerts_json = JSON.parse(secret_alerts)
 
     break if secret_alerts_json.empty?
 
     secret_alerts_json.each do |alert|
-
       locations_url = alert['locations_url']
-      break if locations_url.empty?
+      next if locations_url.empty?
 
-      locations = `#{curl_cmd("#{locations_url}")}`
-      locations_json = JSON.parse(locations)
+      locations_json = JSON.parse(fetch_data(locations_url))
 
       locations_json.each do |location|
         location_details = location['details']
-        note = ''
-        gh_url = "https://github.com/" +
-            "#{org_name}/" +
-            "#{alert['repository']['name']}/blob/" +
-            "#{location_details['commit_sha']}/" +
-            "#{location_details['path']}#L" +
-            "#{location_details['start_line']}"
-
-        if location_details['commit_sha'].nil?
-          note = "You'll need to refer to the Alert URL: #{alert['html_url']}. The GitHub API is broken, #{locations_url} is giving incomplete data" 
-        else 
-          commit_url = location_details['commit_url']
-          commit = `#{curl_cmd("#{commit_url}")}`
-          commit_info = JSON.parse(commit)
+        note, committer_name, committer_date, committer_email, gh_url, file_path = ''
+        if !location_details['issue_comment_url'].nil?
+          issue_comment_info = JSON.parse(fetch_data(location_details['issue_comment_url']))
+          file_path = 'Refer to GitHub URL'
+          committer_name = issue_comment_info['user']['login']
+          committer_email = issue_comment_info['user']['html_url']
+          committer_date = issue_comment_info['created_at']
+          gh_url = issue_comment_info['html_url']
+          note = 'Secret found in issue comment, refer to the GitHub URL column'
+        elsif !location_details['commit_sha'].nil?
+          commit_info = JSON.parse(fetch_data(location_details['commit_url']))
+          file_path = location_details['path']
           committer_name = commit_info['committer']['name']
           committer_email = commit_info['committer']['email']
           committer_date = commit_info['committer']['date']
+          gh_url = "https://github.com/#{org_name}/#{alert['repository']['name']}/blob/#{location_details['commit_sha']}/#{location_details['path']}#L#{location_details['start_line']}"
+          note = 'Secret found in commit, refer to the GitHub URL column'
+        elsif !location_details['pull_request_review_comment_url'].nil?
+          pr_review_comment_info = JSON.parse(fetch_data(location_details['pull_request_review_comment_url']))
+          file_path = pr_review_comment_info['path']
+          committer_name = pr_review_comment_info['user']['login']
+          committer_email = pr_review_comment_info['user']['html_url']
+          committer_date = pr_review_comment_info['created_at']
+          gh_url = pr_review_comment_info['html_url']
+          note = 'Secret found in pull request review comment, refer to the GitHub URL column'
+        else
+          note = "Something's gone wrong! You'll need to refer to the Alert URL: #{alert['html_url']}."
         end
-       
+
+        puts 'Working on: ' + alert['html_url']
+
         alert_data = {
           number: alert['number'],
           ruleid: alert['secret_type_display_name'],
-          file: location_details['path'],
+          file: file_path,
           repository: alert['repository']['full_name'],
           secret: alert['secret'],
           validity: alert['validity'],
@@ -64,7 +74,7 @@ def get_alerts_for_organization(org_name)
           resolution: alert['resolution'],
           commit: location_details['commit_sha'],
           startline: location_details['start_line'],
-          endline:  location_details['end_line'],
+          endline: location_details['end_line'],
           url: alert['html_url'],
           gh_url: gh_url,
           resolution_comment: alert['resolution_comment'],
@@ -73,7 +83,7 @@ def get_alerts_for_organization(org_name)
           committer_date: committer_date,
           note: note
         }
-  
+
         alerts_data << alert_data
       end
     end
